@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rock Paper Scissors</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background-color: #f5f5f5;
+    }
+    
+    #landingPage {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      max-width: 800px;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    
+    h1 {
+      color: #333;
+      margin-bottom: 30px;
+    }
+    
+    .team-selection {
+      display: flex;
+      justify-content: space-around;
+      width: 100%;
+      margin-bottom: 30px;
+    }
+    
+    .team-card {
+      width: 200px;
+      height: 250px;
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 0.3s ease;
+      color: white;
+      font-weight: bold;
+      font-size: 24px;
+    }
+    
+    .team-card:hover {
+      transform: scale(1.05);
+    }
+    
+    #redTeam {
+      background-color: #e74c3c;
+    }
+    
+    #greenTeam {
+      background-color: #2ecc71;
+    }
+    
+    .player-form {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      max-width: 400px;
+    }
+    
+    .player-form input {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-size: 16px;
+    }
+    
+    .player-form button {
+      padding: 12px 30px;
+      background-color: #3498db;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+    
+    .player-form button:hover {
+      background-color: #2980b9;
+    }
+    
+    #gameCanvas {
+      display: none;
+      margin-top: 20px;
+      width: 800px;
+      height: 600px;
+      background-color: #f0f0f0;
+      border: 1px solid #ddd;
+    }
+    
+    .selected-team {
+      margin-top: 10px;
+      font-size: 18px;
+      font-weight: bold;
+    }
+    
+    .bet-info {
+      margin-top: 5px;
+      font-size: 16px;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <div id="landingPage">
+    <h1>Rock Paper Scissors Game</h1>
+    
+    <div class="team-selection">
+      <div class="team-card" id="redTeam" onclick="selectTeam('red')">
+        Red Team
+      </div>
+      <div class="team-card" id="greenTeam" onclick="selectTeam('green')">
+        Green Team
+      </div>
+    </div>
+    
+    <div class="selected-team" id="teamDisplay"></div>
+    
+    <div class="player-form" id="playerForm">
+      <input type="text" id="playerName" placeholder="Enter your name">
+      <input type="number" id="playerBet" placeholder="Enter your bet amount ($)" min="1" step="1">
+      <div class="bet-info">Place your bet! Winners take all losers' bets.</div>
+      <button onclick="joinGame()">JOIN</button>
+    </div>
+  </div>
+  
+  <div id="gameCanvas"></div>
+  
+  <script>
+    let selectedTeam = '';
+    
+    function selectTeam(team) {
+      console.log("Team selected:", team);
+      selectedTeam = team;
+      document.getElementById('teamDisplay').textContent = `Selected: ${team.charAt(0).toUpperCase() + team.slice(1)} Team`;
+      document.getElementById('playerForm').style.display = 'flex';
+      
+      // Highlight selected team
+      document.getElementById('redTeam').style.border = team === 'red' ? '4px solid white' : 'none';
+      document.getElementById('greenTeam').style.border = team === 'green' ? '4px solid white' : 'none';
+    }
+    
+    function joinGame() {
+      const playerName = document.getElementById('playerName').value.trim();
+      const playerBet = parseInt(document.getElementById('playerBet').value) || 0;
+      
+      if (!playerName) {
+        alert('Please enter your name');
+        return;
+      }
+      
+      if (playerBet <= 0) {
+        alert('Please enter a valid bet amount (minimum $1)');
+        return;
+      }
+      
+      console.log("Joining game as:", playerName, "on team:", selectedTeam, "with bet:", playerBet);
+      
+      // Store player info in sessionStorage for the sketch.js to access
+      sessionStorage.setItem('playerName', playerName);
+      sessionStorage.setItem('playerTeam', selectedTeam);
+      sessionStorage.setItem('playerBet', playerBet);
+      
+      // Hide landing page and show game canvas
+      document.getElementById('landingPage').style.display = 'none';
+      document.getElementById('gameCanvas').style.display = 'block';
+      
+      console.log("Game canvas should be visible now");
+      
+      // Initialize the game
+      startGame();
+    }
+  </script>
+  
+  <!-- Include the p5.js sketch directly -->
+  <script>
+    // Game variables
+    let socket;
+    let playerName;
+    let playerTeam;
+    let playerBet;
+    let playerId;
+    let gameState = 'waiting'; // Possible states: 'waiting', 'choosing', 'revealing', 'ended'
+    let currentRound = 0;
+    let myChoice = null;
+    let choices = {};
+    let results = {};
+    let teamScores = { red: 0, green: 0 };
+    let winner;
+    let playerData = {}; // Store player data from the server
+    let teamBets = { red: 0, green: 0 }; // Total bets for each team
+    let winnings = 0; // How much the player won
+
+    // Game emojis
+    const emojiMap = {
+      'rock': '✊',
+      'paper': '✋',
+      'scissors': '✌️'
+    };
+    let selectedItemIndex = -1; // -1 means no selection
+    const items = ['rock', 'paper', 'scissors'];
+    const itemLabels = ['Rock', 'Paper', 'Scissors'];
+
+    // Sound effects
+    let confirmSound;
+
+    console.log("Game code loaded");
+    
+    function startGame() {
+      console.log("Starting game...");
+      // This will be called after the player joins a team
+      // The p5.js instance will be created automatically
+      new p5(sketch);
+    }
+    
+    // Define the p5.js sketch as a function
+    function sketch(p) {
+      p.preload = function() {
+        // Load sound effects
+        try {
+          // We'll use a simple beep sound for now
+          // In a real game, you would load an actual sound file
+          confirmSound = new Audio("data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU");
+        } catch (error) {
+          console.error("Error loading sounds:", error);
+        }
+      };
+      
+      p.setup = function() {
+        console.log("p5.js setup function called");
+        
+        try {
+          // Get player info from sessionStorage
+          playerName = sessionStorage.getItem('playerName') || 'Player';
+          playerTeam = sessionStorage.getItem('playerTeam') || 'red';
+          playerBet = parseInt(sessionStorage.getItem('playerBet')) || 0;
+          console.log("Player info retrieved:", playerName, playerTeam, "bet:", playerBet);
+          
+          // Create canvas and place it in the gameCanvas div
+          let canvas = p.createCanvas(800, 600);
+          canvas.parent('gameCanvas');
+          console.log("Canvas created and added to gameCanvas div");
+          
+          // Initialize socket connection
+          socket = io.connect('http://localhost:3000');
+          console.log("Socket connection attempted");
+
+          socket.on('connect', () => {
+            console.log("Socket connected successfully");
+            
+            // Join team with bet information
+            socket.emit('joinTeam', {
+              name: playerName,
+              team: playerTeam,
+              bet: playerBet
+            });
+          });
+
+          socket.on('connect_error', (error) => {
+            console.error("Socket connection error:", error);
+            alert("Failed to connect to the game server. Please check if the server is running and refresh the page.");
+          });
+
+          // Socket event handlers
+          socket.on('joinedTeam', (data) => {
+            console.log("Joined team:", data);
+            playerId = data.playerId;
+            gameState = 'waiting';
+          });
+          
+          socket.on('teamUpdate', (data) => {
+            console.log("Team update:", data);
+            // Update player data based on team rosters
+            playerData = data.playerData || {};
+            
+            // Calculate total bets for each team
+            teamBets = { red: 0, green: 0 };
+            Object.keys(playerData).forEach(id => {
+              const player = playerData[id];
+              if (player.team === 'red') {
+                teamBets.red += player.bet || 0;
+              } else if (player.team === 'green') {
+                teamBets.green += player.bet || 0;
+              }
+            });
+            
+            console.log("Team bets:", teamBets);
+          });
+          
+          socket.on('roundStart', (data) => {
+            console.log("Round start:", data);
+            currentRound = data.round;
+            gameState = 'choosing';
+            myChoice = null;
+            selectedItemIndex = -1;
+          });
+          
+          socket.on('roundResult', (data) => {
+            console.log("Round result:", data);
+            choices = data.choices || {};
+            results = data.results || {};
+            teamScores = data.teamScores || { red: 0, green: 0 };
+            
+            // Update player data
+            if (data.playerData) {
+              playerData = data.playerData;
+            }
+            
+            gameState = 'revealing';
+            
+            // Auto-ready for next round after 5 seconds
+            setTimeout(() => {
+              if (gameState === 'revealing') {
+                socket.emit('playerReady');
+              }
+            }, 5000);
+          });
+          
+          socket.on('gameEnd', (data) => {
+            console.log("Game end:", data);
+            winner = data.winner;
+            teamScores = data.teamScores || { red: 0, green: 0 };
+            gameState = 'ended';
+            
+            // Calculate winnings
+            if (winner === playerTeam) {
+              // If player's team won, they get a share of the losing team's bets
+              const losingTeam = winner === 'red' ? 'green' : 'red';
+              const winningTeamPlayers = Object.values(playerData).filter(p => p.team === winner).length;
+              
+              if (winningTeamPlayers > 0) {
+                // Each player gets a share proportional to their bet
+                const totalWinningTeamBets = teamBets[winner];
+                const playerShare = totalWinningTeamBets > 0 ? playerBet / totalWinningTeamBets : 0;
+                winnings = Math.round(teamBets[losingTeam] * playerShare);
+              }
+            }
+          });
+          
+          socket.on('playerDisconnected', (data) => {
+            console.log("Player disconnected:", data);
+          });
+          
+          // Set text properties
+          p.textAlign(p.CENTER, p.CENTER);
+        } catch (error) {
+          console.error("Error in setup:", error);
+          alert("An error occurred while setting up the game. Please refresh the page and try again.");
+        }
+      };
+
+      p.draw = function() {
+        try {
+          p.background(240);
+          
+          // Display game header
+          displayHeader();
+          
+          if (gameState === 'waiting') {
+            displayWaitingScreen();
+          } else if (gameState === 'choosing') {
+            displayChoiceScreen();
+          } else if (gameState === 'waiting_for_others') {
+            displayWaitingForOthersScreen();
+          } else if (gameState === 'revealing') {
+            displayResultScreen();
+          } else if (gameState === 'ended') {
+            displayGameEndScreen();
+          }
+        } catch (error) {
+          console.error("Error in draw:", error);
+          // Don't show alert here as it would spam the user
+          // Just log the error and try to continue
+        }
+      };
+
+      p.mousePressed = function() {
+        try {
+          if (gameState === 'waiting') {
+            // Check if ready button is clicked
+            if (p.mouseX > p.width / 2 - 75 && p.mouseX < p.width / 2 + 75 && 
+                p.mouseY > p.height / 2 + 60 && p.mouseY < p.height / 2 + 110) {
+              console.log("Ready button clicked");
+              socket.emit('playerReady');
+            }
+          } else if (gameState === 'choosing') {
+            // Check if one of the items is clicked
+            const itemWidth = 150;
+            const spacing = 100;
+            const startX = p.width / 2 - (itemWidth * 1.5 + spacing);
+            const itemY = p.height / 2;
+            
+            for (let i = 0; i < 3; i++) {
+              const x = startX + i * (itemWidth + spacing);
+              
+              // Check if this item is clicked
+              if (p.dist(p.mouseX, p.mouseY, x, itemY) < itemWidth / 2) {
+                console.log("Selected item:", items[i]);
+                selectedItemIndex = i;
+                myChoice = items[i];
+                break;
+              }
+            }
+            
+            // Check if confirm button is clicked
+            if (selectedItemIndex >= 0 && 
+                p.mouseX > p.width / 2 - 100 && p.mouseX < p.width / 2 + 100 && 
+                p.mouseY > p.height - 100 && p.mouseY < p.height - 50) {
+              console.log("Confirm choice button clicked:", myChoice);
+              
+              // Play confirmation sound
+              try {
+                confirmSound.play();
+              } catch (error) {
+                console.error("Error playing sound:", error);
+              }
+              
+              socket.emit('choice', myChoice);
+              gameState = 'waiting_for_others';
+            }
+          } else if (gameState === 'ended') {
+            // Check if play again button is clicked
+            if (p.mouseX > p.width / 2 - 100 && p.mouseX < p.width / 2 + 100 && 
+                p.mouseY > p.height - 100 && p.mouseY < p.height - 50) {
+              console.log("Play again button clicked");
+              // Reload the page to start over
+              window.location.reload();
+            }
+          }
+        } catch (error) {
+          console.error("Error in mousePressed:", error);
+        }
+      };
+
+      function displayHeader() {
+        p.fill(50);
+        p.textSize(24);
+        p.text(`Rock Paper Scissors - ${playerName} (${playerTeam.toUpperCase()} Team)`, p.width / 2, 30);
+        
+        // Display team scores
+        p.textSize(18);
+        p.fill(220, 50, 50); // Red team color
+        p.text(`Red Team: ${teamScores.red}`, p.width / 4, 60);
+        p.fill(50, 180, 50); // Green team color
+        p.text(`Green Team: ${teamScores.green}`, 3 * p.width / 4, 60);
+        
+        // Display current round if game is active
+        if (currentRound > 0 && gameState !== 'ended') {
+          p.fill(50);
+          p.textSize(20);
+          p.text(`Round ${currentRound}/3`, p.width / 2, 90);
+        }
+        
+        // Display bet information
+        p.textSize(16);
+        p.fill(80);
+        p.text(`Your Bet: $${playerBet}`, p.width / 2, 120);
+      }
+
+      function displayWaitingScreen() {
+        p.fill(50);
+        p.textSize(28);
+        p.text("Waiting for players to join both teams...", p.width / 2, p.height / 2 - 60);
+        
+        // Display team bets
+        p.textSize(20);
+        p.fill(220, 50, 50); // Red team color
+        p.text(`Red Team Total Bet: $${teamBets.red}`, p.width / 3, p.height / 2 - 20);
+        p.fill(50, 180, 50); // Green team color
+        p.text(`Green Team Total Bet: $${teamBets.green}`, 2 * p.width / 3, p.height / 2 - 20);
+        
+        p.fill(50);
+        p.textSize(20);
+        p.text("Click the button below when you're ready to play", p.width / 2, p.height / 2 + 20);
+        
+        // Ready button
+        drawButton("I'm Ready", p.width / 2 - 75, p.height / 2 + 60, 150, 50);
+      }
+
+      function displayChoiceScreen() {
+        p.fill(50);
+        p.textSize(24);
+        p.text("Choose your weapon!", p.width / 2, 160);
+        
+        // Draw the three choices with labels
+        const itemWidth = 150;
+        const spacing = 100;
+        const startX = p.width / 2 - (itemWidth * 1.5 + spacing);
+        const itemY = p.height / 2;
+        
+        for (let i = 0; i < 3; i++) {
+          const x = startX + i * (itemWidth + spacing);
+          
+          // Draw selection indicator if this item is selected
+          if (i === selectedItemIndex) {
+            p.noFill();
+            p.strokeWeight(5);
+            p.stroke(0, 255, 0);
+            p.ellipse(x, itemY, itemWidth + 20, itemWidth + 20);
+            p.strokeWeight(1);
+            p.noStroke();
+          }
+          
+          // Draw the emoji
+          p.fill(50);
+          p.noStroke();
+          p.textSize(80);
+          p.text(emojiMap[items[i]], x, itemY);
+          
+          // Draw the item label
+          p.textSize(20);
+          p.text(itemLabels[i], x, itemY + itemWidth / 2 + 30);
+        }
+        
+        // Draw confirm button if an item is selected
+        if (selectedItemIndex >= 0) {
+          drawButton("Confirm Choice", p.width / 2 - 100, p.height - 100, 200, 50);
+        }
+      }
+
+      function displayWaitingForOthersScreen() {
+        p.fill(50);
+        p.textSize(28);
+        p.text("Waiting for other players to choose...", p.width / 2, p.height / 2 - 40);
+        
+        // Display my choice
+        if (myChoice) {
+          p.textSize(80);
+          p.text(emojiMap[myChoice], p.width / 2, p.height / 2 + 50);
+          
+          p.textSize(20);
+          p.text("Your choice: " + myChoice, p.width / 2, p.height / 2 + 150);
+        }
+      }
+
+      function displayResultScreen() {
+        p.fill(50);
+        p.textSize(24);
+        p.text("Round Results", p.width / 2, 160);
+        
+        // Display my choice
+        if (myChoice) {
+          p.textSize(80);
+          p.text(emojiMap[myChoice], p.width / 3, p.height / 2 - 50);
+          
+          p.textSize(20);
+          p.text("Your choice: " + myChoice, p.width / 3, p.height / 2 + 100);
+        }
+        
+        // Display my result
+        if (results[playerId]) {
+          const myResult = results[playerId];
+          p.textSize(20);
+          p.text(`Wins: ${myResult.wins} | Losses: ${myResult.losses} | Ties: ${myResult.ties}`, p.width / 2, p.height / 2 + 150);
+        }
+        
+        // Display team results
+        p.textSize(22);
+        const redTeamRoundScore = calculateTeamRoundScore('red');
+        const greenTeamRoundScore = calculateTeamRoundScore('green');
+        
+        p.fill(220, 50, 50); // Red team color
+        p.text(`Red Team Round Score: ${redTeamRoundScore}`, p.width / 4, p.height - 100);
+        
+        p.fill(50, 180, 50); // Green team color
+        p.text(`Green Team Round Score: ${greenTeamRoundScore}`, 3 * p.width / 4, p.height - 100);
+        
+        // Display waiting for next round message
+        p.fill(50);
+        p.textSize(18);
+        p.text("Waiting for next round...", p.width / 2, p.height - 50);
+      }
+
+      function displayGameEndScreen() {
+        p.fill(50);
+        p.textSize(32);
+        p.text("Game Over!", p.width / 2, 150);
+        
+        p.textSize(28);
+        if (winner === 'tie') {
+          p.text("It's a tie! All bets are returned.", p.width / 2, p.height / 2 - 70);
+        } else {
+          const winnerText = winner.charAt(0).toUpperCase() + winner.slice(1);
+          p.text(`${winnerText} Team Wins!`, p.width / 2, p.height / 2 - 70);
+          
+          // Display winnings
+          if (winner === playerTeam) {
+            p.fill(0, 150, 0);
+            p.textSize(26);
+            p.text(`You won $${winnings}!`, p.width / 2, p.height / 2 - 30);
+          } else {
+            p.fill(150, 0, 0);
+            p.textSize(26);
+            p.text(`You lost $${playerBet}!`, p.width / 2, p.height / 2 - 30);
+          }
+        }
+        
+        // Display final scores
+        p.textSize(24);
+        p.fill(220, 50, 50); // Red team color
+        p.text(`Red Team: ${teamScores.red}`, p.width / 3, p.height / 2 + 30);
+        
+        p.fill(50, 180, 50); // Green team color
+        p.text(`Green Team: ${teamScores.green}`, 2 * p.width / 3, p.height / 2 + 30);
+        
+        // Display team bets
+        p.textSize(20);
+        p.fill(220, 50, 50); // Red team color
+        p.text(`Red Team Total Bet: $${teamBets.red}`, p.width / 3, p.height / 2 + 70);
+        p.fill(50, 180, 50); // Green team color
+        p.text(`Green Team Total Bet: $${teamBets.green}`, 2 * p.width / 3, p.height / 2 + 70);
+        
+        // Play again button
+        drawButton("Play Again", p.width / 2 - 100, p.height - 100, 200, 50);
+      }
+
+      function drawButton(label, x, y, w, h) {
+        // Button background
+        p.fill(70, 130, 230);
+        p.stroke(50);
+        p.strokeWeight(2);
+        p.rect(x, y, w, h, 10);
+        
+        // Button text
+        p.fill(255);
+        p.noStroke();
+        p.textSize(20);
+        p.text(label, x + w / 2, y + h / 2);
+      }
+
+      function calculateTeamRoundScore(team) {
+        let score = 0;
+        
+        // Get team players from the server's response
+        Object.keys(choices).forEach(playerId => {
+          // Check if this player is from the team we're calculating for
+          if (playerData && playerData[playerId] && playerData[playerId].team === team) {
+            // Add their wins to the score
+            if (results[playerId]) {
+              score += results[playerId].wins;
+            }
+          }
+        });
+        
+        return score;
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>p5.js Test</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background-color: #f0f0f0;
+    }
+  </style>
+</head>
+<body>
+  <script>
+    function setup() {
+      createCanvas(400, 400);
+      console.log("Canvas created in test.html");
+    }
+
+    function draw() {
+      background(220);
+      fill(255, 0, 0);
+      ellipse(width/2, height/2, 100, 100);
+      
+      fill(0);
+      textSize(24);
+      textAlign(CENTER, CENTER);
+      text("p5.js is working!", width/2, height/2);
+    }
+  </script>
+</body>
+</html> 
