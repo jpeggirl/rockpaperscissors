@@ -83,8 +83,10 @@
     }
     
     .bet-button.selected {
-      background-color: #FFD700;
-      box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+      background-color: #28a745;
+      color: white;
+      box-shadow: 0 0 10px rgba(40, 167, 69, 0.5);
+      transform: translateY(-2px);
     }
     
     .double-button {
@@ -270,6 +272,71 @@
       opacity: 1;
       transition: 0s;
     }
+
+    .game-bet-grid {
+      margin-bottom: 20px;
+      width: 100%;
+    }
+    
+    .game-bet-grid .bet-button {
+      font-size: 16px;
+      padding: 10px 20px;
+    }
+    
+    .choice-buttons {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      width: 100%;
+      margin-top: 20px;
+    }
+    
+    .choice-buttons .bet-button {
+      font-size: 32px;
+      padding: 20px 40px;
+      min-width: 150px;
+    }
+
+    @keyframes shakeHands {
+      0%, 100% { transform: translateY(0); }
+      25% { transform: translateY(-20px); }
+      75% { transform: translateY(20px); }
+    }
+
+    .hands-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 40px;
+      margin: 20px 0;
+      min-height: 200px;
+    }
+
+    .hand {
+      font-size: 64px;
+      opacity: 0;
+      transform: scale(0);
+      transition: all 0.3s ease;
+    }
+
+    .hand.show {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    .hand.shake {
+      opacity: 1;
+      transform: scale(1);
+      animation: shakeHands 0.5s ease-in-out;
+    }
+
+    .hand.left {
+      transform-origin: right center;
+    }
+
+    .hand.right {
+      transform-origin: left center;
+    }
   </style>
 </head>
 <body>
@@ -295,21 +362,20 @@
     
     <div id="gameControls" class="game-controls">
       <div class="choice-buttons">
-        <button class="bet-button" onclick="makeChoice('rock')">🪨 Rock</button>
-        <button class="bet-button" onclick="makeChoice('paper')">📄 Paper</button>
-        <button class="bet-button" onclick="makeChoice('scissors')">✂️ Scissors</button>
+        <button class="bet-button" onclick="makeChoice('rock')">✊ Rock</button>
+        <button class="bet-button" onclick="makeChoice('paper')">✋ Paper</button>
+        <button class="bet-button" onclick="makeChoice('scissors')">✌️ Scissors</button>
       </div>
       
-      <div class="choice-container">
-        <div class="player-choice"></div>
-        <div class="vs-text">VS</div>
-        <div class="house-choice"></div>
+      <div class="hands-container">
+        <div class="hand left">✊</div>
+        <div class="hand right">✊</div>
       </div>
       
       <div class="countdown"></div>
       <div class="result-message"></div>
-      
       <div id="result" class="result"></div>
+      
       <div id="stats" class="stats">
         Wins: <span id="wins">0</span> | 
         Losses: <span id="losses">0</span> | 
@@ -325,16 +391,26 @@
     let stats = { wins: 0, losses: 0, ties: 0 };
     let selectedBetButton = null;
     
+    // Define emoji object globally
+    const emoji = {
+      rock: '✊',
+      paper: '✋',
+      scissors: '✌️'
+    };
+
     function selectBet(amount) {
       betAmount = amount;
       
-      // Remove selected class from all buttons
-      document.querySelectorAll('.bet-button').forEach(button => {
+      // Remove selected class from all buttons in both bet grids
+      document.querySelectorAll('.bet-grid .bet-button, .game-bet-grid .bet-button').forEach(button => {
         button.classList.remove('selected');
+        
+        // Find and select matching buttons in both grids
+        const buttonAmount = parseInt(button.textContent.replace('$', ''));
+        if (buttonAmount === amount) {
+          button.classList.add('selected');
+        }
       });
-      
-      // Add selected class to clicked button
-      event.target.classList.add('selected');
     }
     
     function startGame() {
@@ -357,35 +433,60 @@
       document.getElementById('gameControls').style.display = 'flex';
       document.getElementById('balanceAmount').textContent = balance;
       
+      // Show bet grid in game controls
+      const betGridClone = document.querySelector('.bet-grid').cloneNode(true);
+      betGridClone.classList.add('game-bet-grid');
+      document.getElementById('gameControls').insertBefore(betGridClone, document.querySelector('.choice-buttons'));
+      
+      // Update bet buttons onclick handlers in the cloned grid
+      betGridClone.querySelectorAll('.bet-button').forEach(button => {
+        const amount = parseInt(button.textContent.replace('$', ''));
+        button.onclick = () => selectBet(amount);
+      });
+      
       // Hide the player info section
       document.querySelector('.player-info').style.display = 'none';
     }
     
     async function makeChoice(playerChoice) {
+      if (!betAmount || betAmount < 1) {
+        alert('Please select a bet amount first!');
+        return;
+      }
       if (betAmount > balance) {
         alert('Not enough balance!');
         return;
       }
 
-      // Show player's choice with animation
-      const playerChoiceDiv = document.querySelector('.player-choice');
-      playerChoiceDiv.textContent = emoji[playerChoice];
-      playerChoiceDiv.classList.add('selected');
+      const leftHand = document.querySelector('.hand.left');
+      const rightHand = document.querySelector('.hand.right');
+      
+      // Reset hands
+      leftHand.textContent = '✊';
+      rightHand.textContent = '✊';
+      
+      // Show initial fists
+      leftHand.classList.add('show');
+      rightHand.classList.add('show');
 
-      // Show countdown
-      await showCountdown();
+      // Shake hands three times
+      for (let i = 0; i < 3; i++) {
+        leftHand.classList.add('shake');
+        rightHand.classList.add('shake');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        leftHand.classList.remove('shake');
+        rightHand.classList.remove('shake');
+        if (i < 2) await new Promise(resolve => setTimeout(resolve, 200));
+      }
 
-      // Get house choice and show with animation
+      // Get house choice
       const choices = ['rock', 'paper', 'scissors'];
       const houseChoice = choices[Math.floor(Math.random() * choices.length)];
       
-      const houseChoiceDiv = document.querySelector('.house-choice');
-      houseChoiceDiv.textContent = emoji[houseChoice];
-      houseChoiceDiv.classList.add('reveal');
-
-      // Show VS text
-      document.querySelector('.vs-text').style.opacity = '1';
-
+      // Show final choices
+      leftHand.textContent = emoji[playerChoice];
+      rightHand.textContent = emoji[houseChoice];
+      
       // Determine winner and show result with animation
       let result = determineWinner(playerChoice, houseChoice);
       
@@ -399,39 +500,18 @@
       updateStats(result);
       displayResult(playerChoice, houseChoice, result);
 
-      // Double the bet amount after each round
-      betAmount *= 2;
+      // Reset bet amount and selection highlight
+      betAmount = 0;
+      document.querySelectorAll('.bet-button').forEach(button => {
+        button.classList.remove('selected');
+      });
 
       // Reset animations after delay
       setTimeout(() => {
-        playerChoiceDiv.classList.remove('selected');
-        houseChoiceDiv.classList.remove('reveal');
-        houseChoiceDiv.style.opacity = '0';
-        document.querySelector('.vs-text').style.opacity = '0';
         resultMessage.className = 'result-message';
-      }, 2000);
-
-      // Check if the next bet would be too high
-      if (betAmount > balance) {
-        setTimeout(() => {
-          alert('Maximum bet reached! Starting new game...');
-          location.reload();
-        }, 2000);
-      }
-    }
-
-    async function showCountdown() {
-      const countdownDiv = document.querySelector('.countdown');
-      const counts = ['3', '2', '1', '🎲'];
-      
-      for (let count of counts) {
-        countdownDiv.textContent = count;
-        countdownDiv.style.opacity = '1';
-        countdownDiv.classList.add('show');
-        await new Promise(resolve => setTimeout(resolve, 500));
-        countdownDiv.classList.remove('show');
-        countdownDiv.style.opacity = '0';
-      }
+        leftHand.classList.remove('show');
+        rightHand.classList.remove('show');
+      }, 3000);
     }
 
     function getResultText(result) {
@@ -482,11 +562,6 @@
     
     function displayResult(playerChoice, houseChoice, result) {
       const resultDiv = document.getElementById('result');
-      const emoji = {
-        rock: '🪨',
-        paper: '📄',
-        scissors: '✂️'
-      };
       
       let message = `You chose ${emoji[playerChoice]} vs House's ${emoji[houseChoice]}<br>`;
       if (result === 'win') {
