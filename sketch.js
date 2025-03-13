@@ -39,8 +39,11 @@ window.setup = function() {
     console.log("Canvas created and added to gameCanvas div");
     
     // Initialize socket connection
-    socket = io.connect('http://localhost:3000');
-    console.log("Socket connection attempted");
+    socket = io.connect('/', {
+      reconnectionAttempts: 5,
+      timeout: 10000,
+      transports: ['websocket', 'polling']
+    });
 
     socket.on('connect', () => {
       console.log("Socket connected successfully");
@@ -53,8 +56,16 @@ window.setup = function() {
     });
 
     socket.on('connect_error', (error) => {
-      console.error("Socket connection error:", error);
-      alert("Failed to connect to the game server. Please check if the server is running and refresh the page.");
+      console.error('Connection error:', error);
+      // Error handling will be done in the main HTML file
+    });
+
+    socket.on('reconnect_attempt', (attemptNumber) => {
+      console.log(`Attempting to reconnect (${attemptNumber})...`);
+    });
+
+    socket.on('reconnect', () => {
+      console.log('Reconnected to server');
     });
 
     // Socket event handlers

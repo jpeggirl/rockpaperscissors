@@ -30,6 +30,13 @@ A multiplayer Rock Paper Scissors game with betting features, built with Node.js
 
 This game can be deployed to various platforms:
 
+### Vercel (Recommended)
+1. Create an account at [vercel.com](https://vercel.com)
+2. Install Vercel CLI: `npm install -g vercel` (or use the project's local installation)
+3. Run `npm run deploy` or `npx vercel --prod` from the project directory
+4. Follow the prompts to link your Vercel account and project
+5. Your app will be deployed and a URL will be provided
+
 ### Render.com (Free)
 1. Create an account at [render.com](https://render.com)
 2. Create a new Web Service
